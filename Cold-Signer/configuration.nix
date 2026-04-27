@@ -15,5 +15,4 @@
   boot.loader.efi.canTouchEfiVariables = true;
   
   airgap.enable = false;   # Build-Mode
-
 }
