@@ -50,11 +50,8 @@
     mode   = "0755";
   };
 
-<<<<<<< Updated upstream
-  environment.etc."/home/user/Desktop/scripts/README.md" = {
-=======
+
   environment.etc."scripts/README.md" = {
->>>>>>> Stashed changes
     source = ./files/README.md;
     mode   = "0644";
   };
