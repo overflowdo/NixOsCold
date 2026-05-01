@@ -1,288 +1,234 @@
+***
+
+# Runbook – Air‑gapped Hash‑Approval & PSBT‑Workflow
 
 ***
 
-# Cold Wallet Infrastructure (NixOS + Sparrow Wallet)
+## Phase 0 – Voraussetzung (einmalig)
 
-## Overview
-
-This project documents the setup of a **Bitcoin Cold‑Signer Infrastructure** based on **NixOS**, **Sparrow Wallet**, and **Proxmox VE**.  
-The goal is a **reproducible, minimal, auditable and truly air‑gapped** cold‑wallet environment.
-
-The setup is split into:
-
-*   Bitcoin network / test infrastructure
-*   NixOS ISO + system build
-*   Proxmox VM definitions for cold keys and signer
-*   Declarative OS + application configuration (NixOS)
-*   Final air‑gapped hardening
+### Hash / GPG‑Public‑Key‑Austausch
 
 ***
 
-## Bitcoin Network Preparation
+### 0.1 Signer → Public Key erzeugen & auf USB ablegen
 
-Used for testing, development, and verification of PSBT flows.
-Configured on the talos linux device where the hot wallet is also located
-
-### Scripts
-
-Additional scripts for the Bitcoin Network
-Make scripts executable and run them in order:
+**Proxmox Host**
 
 ```bash
-chmod +x *.sh
-./deploy.sh
-./check.sh
-./connect-nodes.sh
+psbt_usbFlow signer
 ```
 
-### Purpose
-
-*   `deploy.sh` – deploys the Bitcoin nodes
-*   `check.sh` – verifies node health
-*   `connect-nodes.sh` – connects nodes within the Bitcoin network
-
-***
-
-## Proxmox VM Layout (Cold Wallets)
-
-### General VM Rules
-
-*   **No network device** for final cold systems
-*   **UEFI only**
-*   Minimal hardware footprint
-*   Reproducible settings through declarative X.nix build
-
-***
-
-### Cold Key VMs (`cold-key-A`, `cold-key-B`)
-
-| Setting         | Value                     |
-| --------------- | ------------------------- |
-| OS              | NixOS minimal (AMD/Intel) |
-| HA              | Off                       |
-| BIOS            | OVMF                      |
-| Machine         | q35                       |
-| Storage         | qcow2                     |
-| Disk Size       | 10 GB                     |
-| EFI Disk        | Enabled                   |
-| Pre-Enroll Keys | Off                       |
-| TPM             | Off                       |
-| Network         | **None**                  |
-| CPU Type        | Host                      |
-| CPUs            | 1                         |
-| Memory          | 1024 MB                   |
-| NUMA            | Off                       |
-| Ballooning      | Off                       |
-| KSM             | Off                       |
-| I/O Thread      | On                        |
-| SSD Emulation   | On                        |
-| Discard         | On                        |
-| Backup          | Off                       |
-
-***
-
-### Cold Signer VM (`cold-signer`)
-
-Same as cold-key VMs, except:
-
-*   **Memory:** 2048 MB
-
-***
-
-## Direct Installation on NixOS (from ISO)
-
-### Disk Setup (Example: `/dev/sda`)
+**Signer‑VM**
 
 ```bash
-sudo fdisk /dev/sda
+sudo mount /dev/disk/by-label/USB /mnt/usb
+sudo hash-keyGen.sh
+# Script macht: sync + umount
 ```
 
-Inside `fdisk`:
+**Proxmox Host**
 
-g
-n
-<Enter>
-<Enter>
-+1024M
-t
-1
-n
-<Enter>
-<Enter>
-w
+    ENTER
 
 ***
 
-### Filesystems and Labels
+### 0.2 KeyB → Public Key importieren
+
+**Proxmox Host**
 
 ```bash
-sudo mkfs.fat -F 32 -n NIXBOOT /dev/sda1
-sudo mkfs.ext4 -L NIXROOT /dev/sda2
+psbt_usbFlow keyb
 ```
 
-***
-
-### Mount Target System
+**KeyB‑VM**
 
 ```bash
-sudo mount /dev/disk/by-label/NIXROOT /mnt
-sudo mkdir -p /mnt/boot
-sudo mount /dev/disk/by-label/NIXBOOT /mnt/boot
+sudo mount /dev/disk/by-label/USB /mnt/usb
+sudo hash-keyStore.sh
+# Script macht: sync + umount
 ```
+
+**Proxmox Host**
+
+    ENTER
 
 ***
 
-### Swapfile (2 GB)
+### 0.3 KeyC → Public Key importieren
+
+**Proxmox Host**
 
 ```bash
-sudo dd if=/dev/zero of=/mnt/.swapfile bs=1024 count=2097152
-sudo chmod 600 /mnt/.swapfile
-sudo mkswap /mnt/.swapfile
-sudo swapon /mnt/.swapfile
+psbt_usbFlow keyc
 ```
 
-***
-
-## NixOS Configuration via GitHub
-
-### Generate Initial Hardware Config
+**KeyC‑VM**
 
 ```bash
-sudo nixos-generate-config --root /mnt
+sudo mount /dev/disk/by-label/USB /mnt/usb
+sudo hash-keyStore.sh
+# Script macht: sync + umount
 ```
 
-### Replace Default Config
+**Proxmox Host**
+
+    ENTER
+
+***
+
+## Phase 1 – PSBT‑Workflow (pro Transaktion)
+
+***
+
+### 1. PSBT erzeugen (Hot)
+
+**Proxmox Host**
 
 ```bash
-sudo rm -rf /mnt/etc/nixos/*
+psbt_usbFlow hot
 ```
 
-### Clone Project Repo
+**Hot‑VM**
 
 ```bash
-git clone https://github.com/overflowdo/NixOsCold.git
+sudo mount /dev/disk/by-label/USB /mnt/usb
+# Sparrow: TX erstellen
+# Sparrow: Export → /mnt/usb/psbt/unappr.<id>.psbt
+sync
+sudo umount /mnt/usb
 ```
 
-### Copy Cold-Signer Configuration
+**Proxmox Host**
+
+    ENTER
+
+***
+
+### 2. Approval erstellen (Signer)
+
+**Proxmox Host**
 
 ```bash
-sudo mv ~/NixOsCold/Cold-Signer/* /mnt/etc/nixos/
+psbt_usbFlow signer
 ```
 
-***
-
-## Install NixOS to Disk
+**Signer‑VM**
 
 ```bash
-sudo nixos-install
+sudo mount /dev/disk/by-label/USB /mnt/usb
+sudo psbt-approve.sh
+# Script erzeugt:
+#   psbt/appr.<id>.psbt
+#   psbt/auth/approval.json
+#   psbt/auth/approval.json.sig
+# Script macht: sync + umount
 ```
 
-Set passwords as prompted.
-The corresponding username to that password will be root
+**Proxmox Host**
 
-Also user/changeme will be additionally available as credentials.
+    ENTER
 
 ***
 
-## Automation of NixOS setup
+### 3. Approval verifizieren & Bitcoin‑Signatur (KeyB oder KeyC)
 
-Instead of all these commands setup.sh can be executed to configure all changes in one go and switch to the new OS.
+**Proxmox Host**
 
 ```bash
-git clone https://github.com/overflowdo/NixOsCold.git
-cd NixOsCold/
-sudo chmod +x setup.sh
-sudo ./setup.sh
+psbt_usbFlow keyb
 ```
 
-***
-
-## Bootloader & Finalization
-
-*   Ensure **EFI Disk is enabled in Proxmox**
-*   **Remove ISO** after installation
-*   Boot from disk (UEFI)
-
-***
-
-## Air‑Gap Mode (Final Security State)
-
-> **Important:** Air‑Gap must only be enabled *after* the system is fully built.
-
-In `/etc/nixos/configuration.nix` via
+**KeyB‑VM**
 
 ```bash
-sudo nano /etc/nixos/configuration.nix
+sudo mount /dev/disk/by-label/USB /mnt/usb
+sudo hash-verify.sh
+# USB bleibt gemountet
+# Sparrow:
+#   Import → psbt/appr.<id>.psbt
+#   Signieren
+#   Export → psbt/signed.<id>.psbt
+sync
+sudo umount /mnt/usb
 ```
-set:
 
-```nix
-airgap.enable = true;
-```
+**Proxmox Host**
 
-Apply safely:
+    ENTER
+
+*(optional: gleiches mit `keyc` wiederholen)*
+
+***
+
+### 4. Combine & Finalize (Signer)
+
+**Proxmox Host**
 
 ```bash
-sudo nixos-rebuild build
-sudo ./result/bin/switch-to-configuration switch
+psbt_usbFlow signer
 ```
 
-***
-
-### Air‑Gap Verification
-
-This disables SSH, DHCP, NetworkManager and removes all active routes.
+**Signer‑VM**
 
 ```bash
-ip -br addr        # only lo
-ip route           # no default route
-ping 1.1.1.1       # must fail
-systemctl status sshd # must be inactive
+sudo mount /dev/disk/by-label/USB /mnt/usb
+# Sparrow:
+#   Import → psbt/signed.<id>.psbt
+#   Combine / Finalize
+#   Export → psbt/final.<id>.psbt
+sync
+sudo umount /mnt/usb
 ```
 
-***
+**Proxmox Host**
 
-### Final Hard Air‑Gap (Exact Steps only applicable for Proxmox lab environment, reality will differ)
-
-In **Proxmox**:
-
-*   Remove Network Device completely  
-    **or**
-*   Attach VM to an isolated, non‑routed bridge
+    ENTER
 
 ***
 
-## Sparrow Wallet
+### 5. Broadcast (Hot)
 
-*   Installed declaratively via `profiles/sparrow.nix`
-*   Uses system package with correct executable resolution
-*   Desktop entry created declaratively
-*   Optional desktop shortcut symlink via `systemd.tmpfiles`
-
-Start Sparrow:
+**Proxmox Host**
 
 ```bash
-sparrow-desktop
+psbt_usbFlow hot
 ```
 
-***
+**Hot‑VM**
 
-## Design Principles
+```bash
+sudo mount /dev/disk/by-label/USB /mnt/usb
+# Sparrow / Bitcoin Core:
+#   Import → psbt/final.<id>.psbt
+#   Broadcast
+sync
+sudo umount /mnt/usb
+```
 
-*   Declarative, reproducible system state
-*   Minimal attack surface
-*   Explicit build → switch separation
-*   OS‑level + hypervisor‑level air‑gap
-*   No implicit defaults or hidden state
+**Proxmox Host**
 
-***
-
-## Status
-
-✅ ISO build reproducible  
-✅ NixOS installation automated  
-✅ Sparrow Wallet functional  
-✅ Desktop integration done  
-✅ Air‑Gap validated
+    ENTER
 
 ***
+
+## Regeln (implizit, ohne Diskussion)
+
+*   **Nur ein USB‑Medium**
+*   **Nur eine TX pro USB**
+*   **ENTER am Proxmox Host = VM‑Schritt abgeschlossen**
+*   **Proxmox prüft nichts**
+*   **Hot verifiziert nichts**
+*   **Key‑VMs signieren nur nach `hash-verify.sh`**
+
+***
+
+Sparrow setup
+Starte sparrow
+schalte es in den offline mode 
+clicke auf import new file und use mnemneic phrase
+Wähle 24 wörter
+    in dejem Wort copntainer kannst du einen buchstaben eingeben und kriegst dann eine auswahl an möglcihen passphrases vorgeschlagen
+    Fülle so alle wörter und schriebe diese auf
+    generiere das wallet
+    wähkle script antive...
+    wähle ein passwort
