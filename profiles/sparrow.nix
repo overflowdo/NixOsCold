@@ -1,45 +1,54 @@
 { config, pkgs, lib, ... }:
 
 let
-  # ============================
-  # 1) Sparrow AppImage Quelle
-  # ============================
-  sparrowVersion = "1.9.1";
-
-  sparrowAppImage = pkgs.fetchurl {
-    url = "https://github.com/sparrowwallet/sparrow/releases/download/${sparrowVersion}/Sparrow-${sparrowVersion}-x86_64.AppImage";
-    # 1) Beim ersten Build: lib.fakeSha256 einsetzen
-    # 2) nixos-rebuild -> Hash aus Fehlermeldung kopieren und hier eintragen
-    sha256 = lib.fakeSha256;
-  };
-
-  # ============================
-  # 2) Launcher Script
-  # ============================
-  sparrowLauncher = pkgs.writeShellScriptBin "sparrow" ''
+  #====================#
+  # 1) Sparrow Wrapper: startet Sparrow stabil in XFCE/Proxmox (X11 + optional Software Rendering)  # 1) Sparrow Standalone Pfad (liegt bereits im Repo /etc/nixos/...)
+  #====================#
+  sparrowWrapped = pkgs.writeShellScriptBin "sparrow" ''
     set -euo pipefail
-    export GDK_BACKEND=x11
-    exec ${pkgs.appimage-run}/bin/appimage-run ${sparrowAppImage} "$@"
-  '';
 
+    if [ ! -x "${sparrowStandalone}" ]; then
+      echo "ERROR: Sparrow Standalone not executable or not found:"
+      echo "  ${sparrowStandalone}"
+      exit 1
+    fi
+
+    export GDK_BACKEND=x11
+
+    unset JAVA_HOME
+    unset CLASSPATH
+    unset _JAVA_OPTIONS
+    unset JAVA_TOOL_OPTIONS
+
+    # Proxmox/VM: JavaFX stabiler ohne OpenGL/ES2
+    export _JAVA_OPTIONS="-Dprism.order=sw"
+
+    exec "${sparrowStandalone}" "$@"
+  '';
 in
 {
-  # ============================
-  # 3) System Pakete (Runtime)
-  # ============================
-  environment.systemPackages = with pkgs; [
-    appimage-run
-    sparrowLauncher
+  #====================#
+  # 3) Runtime-Dependencies für JavaFX/GUI (XFCE)
+  #====================#
+  programs.dconf.enable = true;
 
-    # Fonts (JavaFX/GUI-Apps brauchen das praktisch immer)
+  environment.sessionVariables = {
+    GDK_BACKEND = "x11";
+  };
+
+  environment.systemPackages = with pkgs; [
+    sparrowWrapped
+
+    # Fonts / Fontconfig (JavaFX/GUI)
     fontconfig
     dejavu_fonts
 
-    # GTK/GLib Grundversorgung (hilft bei Dialogen/Theme)
+    # GTK/GLib (Dialogs/Themes/Integration)
     glib
     gtk3
+    gsettings-desktop-schemas
 
-    # X11 libs / Tools (VM + XFCE, stabilisiert Rendering)
+    # X11 libs / Tools (häufig erforderlich bei JavaFX in VMs)
     xorg.libX11
     xorg.libXext
     xorg.libXi
@@ -48,45 +57,43 @@ in
     xorg.libXxf86vm
     xorg.xrandr
     xorg.xset
+
+    # Optional, falls Audio-Init Probleme auftauchen:
+    # alsa-lib
   ];
 
-  # Für XFCE sinnvoll (Portals/Settings). Schadet nicht.
-  programs.dconf.enable = true;
-
-  # Für manche VM-Setups hilfreich, sonst optional.
-  environment.sessionVariables = {
-    GDK_BACKEND = "x11";
-  };
-
-  # ============================
-  # 4) Desktop Entry
-  # ============================
+  #====================#
+  # 4) Desktop Entry (startet Wrapper, nicht direkt das Binary)
+  #====================#
   environment.etc."xdg/applications/sparrow.desktop" = {
     mode = "0644";
     text = ''
       [Desktop Entry]
-      Name=Sparrow Wallet (AppImage)
-      Exec=${lib.getExe sparrowLauncher}
+      Name=Sparrow Wallet (Standalone)
+      Exec=${lib.getExe sparrowWrapped}
       Type=Application
       Categories=Finance;
       Terminal=false
     '';
   };
 
-  # ============================
-  # 5) Optional: Desktop Shortcut
-  # ============================
+  #====================#
+  # 5) Optional: Desktop-Shortcut (dein bisheriger Stil)
+  #====================#
   systemd.tmpfiles.rules = lib.mkAfter [
     "d /home/user/Desktop 0755 user users - -"
     "L+ /home/user/Desktop/sparrow.desktop - - - - /etc/xdg/applications/sparrow.desktop"
   ];
 
-  # ============================
-  # 6) Optional: Hardware Wallet udev rules
-  # (nur falls du Ledger/Trezor nutzt)
-  # ============================
-  services.udev.packages = with pkgs; [
-    ledger-udev-rules
-    trezor-udev-rules
-  ];
+  #====================#
+  # 6) Optional: Udev rules für Hardware Wallets (nur wenn benötigt)
+  #====================#
+  # services.udev.packages = with pkgs; [
+  #   ledger-udev-rules
+  #   trezor-udev-rules
+  # ];
 }
+  #====================#
+  sparrowStandalone = "/etc/nixos/NixOs/profiles/programs/Sparrow/bin/Sparrow";
+
+  #====================#
