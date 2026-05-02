@@ -34,7 +34,7 @@ in
       wantedBy = [ "multi-user.target" ];
       after = [ "sysinit.target" ];
       serviceConfig = { Type = "oneshot"; };
-      path = [ pkgs.procps pkgs.iproute2 pkgs.bash ];
+      path = [ nixpkgs.procps nixpkgs.iproute2 nixpkgs.bash ];
       script = ''
         set -euo pipefail
         for i in $(ip -o link show | awk -F': ' '{print $2}'); do
