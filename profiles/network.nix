@@ -1,4 +1,4 @@
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 
 let
   airgap = config.airgap.enable;
@@ -34,7 +34,7 @@ in
       wantedBy = [ "multi-user.target" ];
       after = [ "sysinit.target" ];
       serviceConfig = { Type = "oneshot"; };
-      path = [ nixpkgs.procps nixpkgs.iproute2 nixpkgs.bash ];
+      path = [ pkgs.procps pkgs.iproute2 pkgs.bash ];
       script = ''
         set -euo pipefail
         for i in $(ip -o link show | awk -F': ' '{print $2}'); do
