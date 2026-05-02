@@ -40,11 +40,11 @@ in
         for i in $(ip -o link show | awk -F': ' '{print $2}'); do
           [ "$i" = "lo" ] && continue
 
-          sysctl -w "net.ipv6.conf.${i}.disable_ipv6=1" >/dev/null || true
-          sysctl -w "net.ipv6.conf.${i}.accept_ra=0" >/dev/null || true
-          sysctl -w "net.ipv6.conf.${i}.autoconf=0" >/dev/null || true
-          sysctl -w "net.ipv6.conf.${i}.accept_redirects=0" >/dev/null || true
-          sysctl -w "net.ipv6.conf.${i}.dad_transmits=0" >/dev/null || true
+          sysctl -w "net.ipv6.conf.$i.disable_ipv6=1" >/dev/null || true
+          sysctl -w "net.ipv6.conf.$i.accept_ra=0" >/dev/null || true
+          sysctl -w "net.ipv6.conf.$i.autoconf=0" >/dev/null || true
+          sysctl -w "net.ipv6.conf.$i.accept_redirects=0" >/dev/null || true
+          sysctl -w "net.ipv6.conf.$i.dad_transmits=0" >/dev/null || true
 
           sysctl -w "net.ipv4.conf.${i}.disable_ipv4=1" >/dev/null || true
         done
