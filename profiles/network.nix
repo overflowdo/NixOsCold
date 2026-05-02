@@ -8,7 +8,6 @@ in
   config = lib.mkIf airgap {
 
     networking.useDHCP = false;
-    networking.interfaces.${iface}.useDHCP = false;
 
     networking.networkmanager.enable = false;
     networking.useNetworkd = true;
@@ -47,6 +46,7 @@ in
           sysctl -w "net.ipv6.conf.$i.dad_transmits=0" >/dev/null || true
 
           sysctl -w "net.ipv4.conf.$i.disable_ipv4=1" >/dev/null || true
+          sysctl -w "networking.interfaces.$i.useDHCP" >/dev/null || true
         done
       '';
     };
