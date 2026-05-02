@@ -24,7 +24,6 @@ in
 
     # kein Warten auf Netzwerk
     systemd.network.wait-online.enable = false;
-    networking.networkmanager.wait-online.enable = false;
 
     
     # One-shot: bei jedem boot/switch alle aktuellen Interfaces härten
