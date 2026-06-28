@@ -98,8 +98,12 @@ setup/setup.sh
 
 Da Key A im Hot-System liegt, müssen die für die Multisignatur benötigten Informationen kontrolliert exportiert werden.
 Dieser key wurde vollautomatisch im NisOS für das Hot-Wallet deklarativ per one-shot erstellt.
-Der initiale Seed kann per systemctl status signer-intit eingesehen werden.
-Es empfiehlt sich diese logs nach Notieren des Seeds durch den folgenden Befehl zu entfernen:
+Der intiale 24 Wörter mnemonic Seed phrase kann über den Status des service Programs eingesehen und physisch notiert werden:
+```bash
+systemctl status signer-intit
+```
+
+Zudem sollte das Log daraufhin gelöscht werden:
 ```bash
 sudo journalctl --vacuum-time=5s
 ```
