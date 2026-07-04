@@ -7,13 +7,12 @@
 
   networking.hostName = "cold-Signer";
 
-  #User mit Sudo
-  users.users.user = {
-    isNormalUser = true;
-    description = "Admin";
-    initialPassword = "changeme";
-    extraGroups = [ "wheel" ];
-  };
+    users.users.user = {
+      isNormalUser = true;
+      description = "Admin";
+      hashedPassword = "$6$MZj5odB7Ybpv3/rZ$eiX32rlH4uqjk9BsfSUeBhv7Pc4vMOCQrf73pP5b/EyLX9xIYTX0jqgQ/BjQ3sUeK/aePuwve3CYchIiYeDRh.";
+      extraGroups = [ "wheel" ];
+    };
 
   security.sudo.wheelNeedsPassword = true;
 
@@ -23,18 +22,12 @@
     unzip
     #webcam zum QR-code scannen fuer sparrow
     v4l-utils
-    gnupg
     coreutils
   ];
 
   #============================================
   #Echte scripte (referenziert in warpper)
   #============================================
-  environment.etc."scripts/psbt/README.md" = {
-    source = ./files/psbt/README.md;
-    mode   = "0644";
-  };
-
   environment.etc."scripts/setup/online.sh" = {
     source = ./files/setup/online.sh;
     mode   = "0755";
@@ -97,12 +90,7 @@
     "d /home/user/Desktop 0750 user users - -"
     "d /home/user/bin 0750 user users - -"
     "d /home/user/Desktop/scripts 0750 user users - -"
-    "d /home/user/Desktop/scripts/auth 0750 user users - -"
-    "d /home/user/Desktop/scripts/psbt 0750 user users - -"
     "d /home/user/Desktop/scripts/setup 0750 user users - -"
-    "d /var/lib/psbt-guard 0700 root root - -"
-    "d /var/lib/psbt-guard/gnupg 0700 root root - -"
-    "d /var/lib/psbt-guard/identity 0700 root root - -"
     "d /mnt/usb 0755 root root - -"
 
     "L+ /home/user/Desktop/scripts/setup/online.sh - - - - /etc/scripts/wrappers/online.sh"
@@ -112,13 +100,6 @@
     "L+ /home/user/Desktop/scripts/setup/mnt-USB.sh - - - - /etc/scripts/wrappers/mnt-USB.sh"
     "L+ /home/user/Desktop/scripts/setup/umnt-USB.sh - - - - /etc/scripts/wrappers/umnt-USB.sh"
   ];
-      
-  #Journald begrenzen (VM-Disk nicht zulaufen lassen)
-  services.journald.extraConfig = ''
-    SystemMaxUse=200M
-    RuntimeMaxUse=150M
-  '';
-
   
  systemd.user.services.thunar-exec-shell-scripts = {
     description = "Thunar: execute shell scripts by default";
@@ -133,4 +114,5 @@
       '';
     };
   };
+  
 }

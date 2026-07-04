@@ -4,8 +4,10 @@ set -euo pipefail
 DISK="/dev/sda"
 EFI_SIZE="1024M"
 
-REPO_URL="https://github.com/overflowdo/NixOsCold.git"
-REPO_SUBDIR=""
+REPO_URL="https://github.com/LucaDev/LFM-Team-Blue.git"
+REPO_REF="<commit-sha-hier>"
+REPO_SUBDIR="Cold-Wallet"
+
 SWAP_SIZE_GB="2"
 
 # Robust partition naming
@@ -46,35 +48,21 @@ ensure_nixboot() {
   mkfs.fat -F 32 -n NIXBOOT "$part"
 }
 
-ensure_nixroot() {
-  local part="$part2"
-  [[ -b "$part" ]] || { echo "ERROR: $part not found"; exit 1; }
-
-  local fstype label
-  fstype="$(blkid -o value -s TYPE "$part" 2>/dev/null || true)"
-  label="$(blkid -o value -s LABEL "$part" 2>/dev/null || true)"
-
-  if [[ "$fstype" == "ext4" && "$label" == "NIXROOT" ]]; then
-    echo "[OK] NIXROOT already present on $part"
-    return 0
-  fi
-
-  echo "[DO] Creating/refreshing NIXROOT on $part (fstype=$fstype label=$label)"
-  mkfs.ext4 -F -L NIXROOT "$part"
-}
-
 echo "[3/9] Formatting partitions (FAT32 EFI + EXT4 root)"
 ensure_nixboot
-ensure_nixroot
 
 partprobe "$DISK"
 udevadm trigger
 udevadm settle
 sleep 1
 
+cryptsetup luksFormat --type luks2 --label NIXCRYPT "$part2"
+cryptsetup open "$part2" cryptroot
+mkfs.ext4 -L NIXROOT /dev/mapper/cryptroot
+
 echo "[4/9] Mounting"
 mountpoint -q /mnt && umount -R /mnt || true
-mount /dev/disk/by-label/NIXROOT /mnt
+mount /dev/mapper/cryptroot /mnt
 mkdir -p /mnt/boot
 mount /dev/disk/by-label/NIXBOOT /mnt/boot
 
@@ -93,7 +81,8 @@ echo "[7/9] Replace /mnt/etc/nixos with repo content"
 rm -rf /mnt/etc/nixos/*
 mkdir -p /mnt/etc/nixos
 
-git clone --depth 1 "$REPO_URL" /mnt/etc/nixos/.repo
+git clone "$REPO_URL" /mnt/etc/nixos/.repo
+#git -C /mnt/etc/nixos/.repo checkout "$REPO_REF"
 
 if [[ -n "$REPO_SUBDIR" ]]; then
   if [[ ! -d "/mnt/etc/nixos/.repo/$REPO_SUBDIR" ]]; then
@@ -108,11 +97,24 @@ else
 fi
 
 rm -rf /mnt/etc/nixos/.repo
-rm -rf /etc/nixos/.git
+rm -rf /mnt/etc/nixos/.git
 
+
+echo "[8/9] Flake-Inputs pinnen (flake.lock)"
+export NIX_CONFIG="experimental-features = nix-command flakes"
+if [[ ! -f /mnt/etc/nixos/flake.lock ]]; then
+  nix flake lock /mnt/etc/nixos
+  echo "  -> flake.lock neu erzeugt (pinnt auf Installationszeitpunkt)."
+else
+  echo "  -> flake.lock aus Repo vorhanden, wird verwendet."
+fi
 
 echo "[9/9] Install NixOS"
 export NIX_CONFIG="experimental-features = nix-command flakes"
 nixos-install --no-root-passwd --flake /mnt/etc/nixos#cold
+
+echo "[*] Removing install-only swapfile"
+swapoff /mnt/.swapfile 2>/dev/null || true
+rm -f /mnt/.swapfile
 
 echo "DONE. Remove ISO in Proxmox and reboot."
